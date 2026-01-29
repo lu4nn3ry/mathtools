@@ -6,6 +6,7 @@ import { z } from "zod";
 import * as db from "./db";
 import { TRPCError } from "@trpc/server";
 import { analyzeSeo } from "./seoAnalyzer";
+import { generateTitleSuggestions, generateDescriptionSuggestions, generateCtaSuggestions, generateContentSuggestions, generateKeywordSuggestions } from "./aiSuggestions";
 
 export const appRouter = router({
   system: systemRouter,
@@ -178,6 +179,44 @@ export const appRouter = router({
       }))
       .query(({ input }) => {
         return analyzeSeo(input.title, input.body, input.metaDescription, input.metaKeywords);
+      }),
+  }),
+
+  // AI Suggestions router
+  aiSuggestions: router({
+    titleSuggestion: protectedProcedure
+      .input(z.object({ title: z.string(), body: z.string() }))
+      .mutation(async ({ ctx, input }) => {
+        await db.consumeCredits(ctx.user.id, 1);
+        return await generateTitleSuggestions(input.title, input.body);
+      }),
+
+    descriptionSuggestion: protectedProcedure
+      .input(z.object({ metaDescription: z.string(), title: z.string(), body: z.string() }))
+      .mutation(async ({ ctx, input }) => {
+        await db.consumeCredits(ctx.user.id, 1);
+        return await generateDescriptionSuggestions(input.metaDescription, input.title, input.body);
+      }),
+
+    ctaSuggestion: protectedProcedure
+      .input(z.object({ body: z.string(), title: z.string() }))
+      .mutation(async ({ ctx, input }) => {
+        await db.consumeCredits(ctx.user.id, 2);
+        return await generateCtaSuggestions(input.body, input.title);
+      }),
+
+    contentSuggestion: protectedProcedure
+      .input(z.object({ body: z.string(), title: z.string() }))
+      .mutation(async ({ ctx, input }) => {
+        await db.consumeCredits(ctx.user.id, 3);
+        return await generateContentSuggestions(input.body, input.title);
+      }),
+
+    keywordSuggestion: protectedProcedure
+      .input(z.object({ title: z.string(), body: z.string(), currentKeywords: z.string().optional() }))
+      .mutation(async ({ ctx, input }) => {
+        await db.consumeCredits(ctx.user.id, 1);
+        return await generateKeywordSuggestions(input.title, input.body, input.currentKeywords);
       }),
   }),
 
