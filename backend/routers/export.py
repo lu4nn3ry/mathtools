@@ -14,6 +14,10 @@ class ExportRequest(BaseModel):
 async def export_document(req: ExportRequest):
     try:
         output = bridge.export(req.content, req.format)
-        return {"ok": True, "file": output}
+        if not output.get("ok"):
+            raise HTTPException(status_code=400, detail=output.get("error", "Export failed"))
+        return {"ok": True, "file": output.get("file"), "format": output.get("format")}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
