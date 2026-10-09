@@ -1,8 +1,9 @@
 import subprocess
 import shutil
 import re
-import sympy as sp
 from pathlib import Path
+
+from backend.core.safe_math import SafeMathEvaluator
 
 
 # Pre-built theorem templates for common identities
@@ -165,7 +166,7 @@ open Real
 
     def _sympy_to_lean_inner(self, expression: str) -> str:
         """Convert a single SymPy expression (no equality) to Lean syntax."""
-        expr = sp.sympify(expression)
+        expr = SafeMathEvaluator().parse_expression(expression)
         lean_str = repr(expr)
 
         # Basic operator replacements
