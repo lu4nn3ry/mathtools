@@ -1,52 +1,28 @@
 import sympy as sp
 import re
-import sys
 import io
 from typing import Optional
+
+from backend.core.safe_math import SafeMathEvaluator
 
 
 class SympyEngine:
     def __init__(self):
         self.session = {}
 
-    def _ensure_symbols(self, expr_str: str):
-        """Automatically discover and create symbols from an expression string."""
-        # Find all valid Python/SymPy identifiers that aren't known functions
-        known = {"sin", "cos", "tan", "cot", "sec", "csc",
-                 "asin", "acos", "atan", "atan2", "acot", "asec", "acsc",
-                 "sinh", "cosh", "tanh", "asinh", "acosh", "atanh",
-                 "exp", "log", "sqrt", "Abs", "sign",
-                 "pi", "E", "I", "oo", "Integer", "Rational", "Float",
-                 "Symbol", "symbols", "Matrix", "eye", "zeros", "ones",
-                 "diff", "integrate", "solve", "simplify", "expand",
-                 "factor", "collect", "apart", "together", "cancel",
-                 "limit", "series", "summation", "product",
-                 "oo", "zoo", "nan"}
-        identifiers = set(re.findall(r'\b[a-zA-Z_]\w*\b', expr_str))
-        for name in identifiers:
-            if name not in known and not name.startswith("_"):
-                if name not in self.session:
-                    self.session[name] = sp.Symbol(name)
+    def _parse(self, expression: str):
+        """Converte entrada do usuário em expressão SymPy sem eval/exec."""
+        return SafeMathEvaluator(session=self.session).parse_expression(expression)
+
+    def _symbol(self, name: str):
+        """Cria um símbolo a partir de um nome de variável validado."""
+        if not re.fullmatch(r"[A-Za-z_]\w*", name or ""):
+            raise ValueError(f"Nome de variável inválido: {name!r}")
+        return sp.Symbol(name)
 
     def evaluate(self, expression: str) -> dict:
-        """Evaluate an arbitrary SymPy expression and return multiple formats."""
-        self._ensure_symbols(expression)
-        namespace = self.session.copy()
-        namespace.update({
-            "sin": sp.sin, "cos": sp.cos, "tan": sp.tan,
-            "cot": sp.cot, "sec": sp.sec, "csc": sp.csc,
-            "asin": sp.asin, "acos": sp.acos, "atan": sp.atan,
-            "sinh": sp.sinh, "cosh": sp.cosh, "tanh": sp.tanh,
-            "exp": sp.exp, "log": sp.log, "sqrt": sp.sqrt,
-            "pi": sp.pi, "E": sp.E, "I": sp.I,
-            "diff": sp.diff, "integrate": sp.integrate,
-            "solve": sp.solve, "simplify": sp.simplify,
-            "expand": sp.expand, "factor": sp.factor,
-            "limit": sp.limit, "summation": sp.summation,
-            "oo": sp.oo, "Matrix": sp.Matrix,
-            "symbols": sp.symbols, "Symbol": sp.Symbol,
-        })
-        result = eval(expression, {"__builtins__": {}}, namespace)
+        """Evaluate a math expression and return multiple formats."""
+        result = self._parse(expression)
         if isinstance(result, sp.Basic):
             return {
                 "input": expression,
@@ -62,8 +38,8 @@ class SympyEngine:
         }
 
     def solve(self, expression: str, variable: str = "x") -> dict:
-        expr = sp.sympify(expression)
-        var = sp.Symbol(variable)
+        expr = self._parse(expression)
+        var = self._symbol(variable)
         solutions = sp.solve(expr, var)
         return {
             "expression": str(expr),
@@ -73,7 +49,7 @@ class SympyEngine:
         }
 
     def simplify(self, expression: str) -> dict:
-        expr = sp.sympify(expression)
+        expr = self._parse(expression)
         simplified = sp.simplify(expr)
         return {
             "input": str(expr),
@@ -84,8 +60,8 @@ class SympyEngine:
 
     def differentiate(self, expression: str, variable: str = "x",
                      order: int = 1) -> dict:
-        expr = sp.sympify(expression)
-        var = sp.Symbol(variable)
+        expr = self._parse(expression)
+        var = self._symbol(variable)
         derivative = sp.diff(expr, var, order)
         return {
             "input": str(expr),
@@ -96,8 +72,8 @@ class SympyEngine:
 
     def integrate(self, expression: str, variable: str = "x",
                   definite: Optional[tuple] = None) -> dict:
-        expr = sp.sympify(expression)
-        var = sp.Symbol(variable)
+        expr = self._parse(expression)
+        var = self._symbol(variable)
         if definite:
             integral = sp.integrate(expr, (var, definite[0], definite[1]))
         else:
@@ -110,7 +86,7 @@ class SympyEngine:
         }
 
     def expand(self, expression: str) -> dict:
-        expr = sp.sympify(expression)
+        expr = self._parse(expression)
         expanded = sp.expand(expr)
         return {
             "input": str(expr),
@@ -120,7 +96,7 @@ class SympyEngine:
         }
 
     def factor(self, expression: str) -> dict:
-        expr = sp.sympify(expression)
+        expr = self._parse(expression)
         factored = sp.factor(expr)
         return {
             "input": str(expr),
@@ -131,9 +107,9 @@ class SympyEngine:
 
     def series(self, expression: str, variable: str = "x",
                point: str = "0", order: int = 6) -> dict:
-        expr = sp.sympify(expression)
-        var = sp.Symbol(variable)
-        pt = sp.sympify(point)
+        expr = self._parse(expression)
+        var = self._symbol(variable)
+        pt = self._parse(point)
         result = sp.series(expr, var, pt, order)
         return {
             "input": f"series({expression}, {variable}, {point}, {order})",
@@ -143,8 +119,8 @@ class SympyEngine:
         }
 
     def solve_linear_system(self, equations: list, variables: list) -> dict:
-        exprs = [sp.sympify(eq) for eq in equations]
-        vars = [sp.Symbol(v) for v in variables]
+        exprs = [self._parse(eq) for eq in equations]
+        vars = [self._symbol(v) for v in variables]
         result = sp.linsolve(exprs, vars)
         solutions = []
         for sol in result.args if hasattr(result, 'args') else [result]:
@@ -159,9 +135,9 @@ class SympyEngine:
 
     def limit(self, expression: str, variable: str = "x",
               point: str = "0", direction: str = "+-") -> dict:
-        expr = sp.sympify(expression)
-        var = sp.Symbol(variable)
-        pt = sp.sympify(point)
+        expr = self._parse(expression)
+        var = self._symbol(variable)
+        pt = self._parse(point)
         if direction == "+":
             result = sp.limit(expr, var, pt, dir="+")
         elif direction == "-":
@@ -177,7 +153,7 @@ class SympyEngine:
 
     def to_lean(self, expression: str) -> str:
         """Convert a SymPy expression to a Lean theorem statement."""
-        expr = sp.sympify(expression)
+        expr = self._parse(expression)
         lean_str = repr(expr)
 
         replacements = [
@@ -214,46 +190,12 @@ class SympyEngine:
         )
 
     def execute(self, code: str) -> dict:
-        """Execute Python code in the session, return stdout + last expression."""
-        import builtins
-
-        # Session namespace: only sp module + user variables (no sp.__dict__ flat)
-        namespace = {"sp": sp, **self.session}
-
-        # Snapshot variable names before execution
-        before = set(namespace.keys())
-
+        """Executa uma célula na DSL matemática restrita (sem eval/exec)."""
         output = io.StringIO()
-        old_stdout = sys.stdout
-        sys.stdout = output
-
+        evaluator = SafeMathEvaluator(session=self.session, stdout=output)
         try:
-            compiled = compile(code.strip(), "<input>", "exec")
-            exec(compiled, {"__builtins__": builtins}, namespace)
-
-            # Store only newly defined variables
-            for k in namespace:
-                if k not in before and not k.startswith("_"):
-                    v = namespace[k]
-                    if isinstance(v, (sp.Basic, list, tuple, set, dict)):
-                        self.session[k] = v
-                    elif hasattr(sp, "Matrix") and isinstance(v, sp.Matrix):
-                        self.session[k] = v
-
+            last_val = evaluator.execute_cell(code)
             stdout_output = output.getvalue().strip()
-
-            # Evaluate the last non-trivial line for its result
-            last_val = None
-            body = [ln.strip() for ln in code.strip().split("\n") if ln.strip()]
-            for line in reversed(body):
-                if line.startswith(("#", "import ", "from ", "return ")):
-                    continue
-                try:
-                    last_val = eval(line, {"__builtins__": builtins}, namespace)
-                    break
-                except Exception:
-                    continue
-
             result = {
                 "input": code,
                 "stdout": stdout_output,
@@ -269,11 +211,10 @@ class SympyEngine:
                 except Exception:
                     result["result"] = repr(last_val)
             return result
-
         except Exception as e:
             return {"input": code, "error": str(e), "type": "error", "session_vars": {}}
         finally:
-            sys.stdout = old_stdout
+            output.close()
 
     def reset_session(self):
         self.session.clear()
